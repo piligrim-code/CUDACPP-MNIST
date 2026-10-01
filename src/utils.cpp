@@ -1,8 +1,10 @@
 #include "utils.h"
 #include <opencv2/opencv.hpp>
+#include "input_validation.h"
 #include <iostream>
 
 void visualize(const std::vector<float>& img, int pred) {
+    validate_image(img);
     cv::Mat m(28, 28, CV_32F);
     for (int i = 0;i < 28 * 28;++i) m.at<float>(i / 28, i % 28) = img[i];
     cv::resize(m, m, cv::Size(280, 280), 0, 0, cv::INTER_NEAREST);
