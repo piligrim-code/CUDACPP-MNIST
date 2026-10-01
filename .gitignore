@@ -1,0 +1,10 @@
+build*/
+.vs/
+data/
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+*.pdb
+*.log

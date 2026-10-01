@@ -1,20 +1,48 @@
-cmake_minimum_required(VERSION 3.10)
-project(cuda_cnn_mnist LANGUAGES CXX CUDA)
+cmake_minimum_required(VERSION 3.18)
+project(cuda_cnn_mnist LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 14)
-find_package(OpenCV REQUIRED)
-find_package(CUDA REQUIRED)
+option(BUILD_CUDA_DEMO "Build the GPU demo (requires a CUDA toolkit)" OFF)
+option(ENABLE_OPENCV "Enable optional interactive digit display" OFF)
+option(ENABLE_SANITIZERS "Enable CPU address/undefined-behavior sanitizers" OFF)
 
-include_directories(${OpenCV_INCLUDE_DIRS} src)
+add_library(mnist STATIC src/mnist.cpp)
+target_include_directories(mnist PUBLIC src)
+target_compile_features(mnist PUBLIC cxx_std_17)
 
-# nvcc flags
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=sm_50 -O2")
+if(ENABLE_SANITIZERS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT WIN32)
+        target_compile_options(mnist PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(mnist PUBLIC -fsanitize=address,undefined)
+    else()
+        message(FATAL_ERROR "Sanitizer configuration supports Linux GCC/Clang only")
+    endif()
+endif()
 
-cuda_add_executable(cuda_cnn
-    src/main.cu
-    src/cnn.cu
-    src/mnist.cpp
-    src/utils.cpp
-)
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(mnist_tests tests/mnist_tests.cpp)
+    target_link_libraries(mnist_tests PRIVATE mnist)
+    add_test(NAME synthetic_idx_and_input_validation COMMAND mnist_tests)
+endif()
 
-target_link_libraries(cuda_cnn ${OpenCV_LIBS})
+if(BUILD_CUDA_DEMO)
+    if(ENABLE_SANITIZERS)
+        message(FATAL_ERROR "Use separate CPU-sanitizer and CUDA build directories")
+    endif()
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES 75)
+    endif()
+    enable_language(CUDA)
+    add_executable(cuda_cnn src/main.cu src/cnn.cu)
+    set_target_properties(cuda_cnn PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED YES)
+    target_link_libraries(cuda_cnn PRIVATE mnist)
+    if(ENABLE_OPENCV)
+        find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
+        target_sources(cuda_cnn PRIVATE src/utils.cpp)
+        target_include_directories(cuda_cnn PRIVATE ${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(cuda_cnn PRIVATE ${OpenCV_LIBS})
+        target_compile_definitions(cuda_cnn PRIVATE MNIST_WITH_OPENCV=1)
+    endif()
+elseif(ENABLE_OPENCV)
+    message(FATAL_ERROR "ENABLE_OPENCV requires BUILD_CUDA_DEMO")
+endif()
